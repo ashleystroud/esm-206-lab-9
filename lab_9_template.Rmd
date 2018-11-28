@@ -42,10 +42,12 @@ library(stargazer)
 
 # a. Read in data as 'homes':
 
+homes <- read.csv("slo_homes.csv")
 
 # b. Filter to only include cities "San Luis Obispo", "Santa Maria-Orcutt", "Atascadero", and "Arroyo Grande", and call this new subset 'homes_sub':
 
-
+homes_sub <- homes %>%
+  filter(City == "San Luis Obispo"| City == "Santa Maria-Orcutt" | City == "Atascadero" | City == "Arroyo Grande")
 
 ```
 
@@ -85,6 +87,8 @@ by_sqft <- ggplot(homes_sub, aes(x = SqFt, y = Price)) +
   geom_point(aes(color = City, pch = Status), alpha = 0.5) +
   facet_wrap(~Status)
 
+#pch is... , alpha is transparency
+
 by_sqft
 
 # Observations here: Does relationship appear ~ linear? Anything else we can pick out re: trends, outliers, etc.? What is the general trend? Any outliers? Is there reason enough for us to omit it?
@@ -107,9 +111,15 @@ Use summary() to view the model output and statistics.
 ```{r saturated}
 
 # a. Saturated model: 
+# 1, this should concern you, but include all, price is dependent variable, remember dependent must be a continuous variable. Which variable are we concerned about including that will totally bias model higher than it is? Price per square foot ( which is price column divided by sqft). if a variable (price per sqft) is derived from variable you are trying to model (price), it is a positive feedback. aka not random and will bias bc it will fit perfectly. 
 
+homes_lm <- lm(Price ~ City + Bedrooms + Bathrooms + SqFt + PricePerSqFt + Status, data = homes_sub)
+#reference level is forclosure, status regular shows it goes down by 20k, then we say there is no way that these coefficients could be correct
 
 # b. Model summary:
+
+summary(homes_lm)
+#bedrooms term is concerning. using multiple variables to describe the same thing about a house. those may be bedrooms, bathrooms, sqft which all answer how big is the house. so if we are really using size as a metric. Of course if you think number of bathrooms also has an effect, than you can keep it in. 
 
 ```
 
@@ -119,30 +129,43 @@ The next model: Exclude price per square foot, and bedrooms/bathrooms (since the
 
 # a. Updated model with variables City, SqFt, and Status:
 
+homes_lm2 <- lm(Price ~ City + SqFt, Status, data = homes_sub)
+
 # b. Model summary:
+summary(homes_lm2)
+#if you get data that makes this much sense you would be very excited. if looking at coeff. for every 1 sqft increase, i would expect price go up by 250 ?? if buy house reg sale vs closure expect to pay more 210k.  short sale p value says we do not have enough info to think sig difference in means to forclosure. but def sig to regular sales. remember reference level is arroyo grande which is why it is not showing up. i would expect a house in atascadero to sell about 202k less than in arroyo grande, and i would expect house in slo to sell for 35k more. etc etc. some error associated with this bc never get the right model. But what are things that could improve this model? This model is good bc of bottom p value which is model p. model fit will always go up with more variables as an artifact. 53% of this housing price is reflected from this model. But what about improve overall variance that is explained? variables such as age of house, location to beach, school district etc. 
+
+#multiple r squared value is what you would use for linear regress, does not account (this i at 36 min on recording)
+
 
 ```
 
 Wait...but what if I wanted everything to be with respect to a Regular sale status? Then I need to change my factor levels. We've done this before, here we'll use a different function (fct_relevel) from *forcats* package in the tidyverse. 
 
+if using factors all the time, forcats is perfect for this. 
+
 ```{r fct_relevel}
 
 # a. Set Status to class 'factor'
-
+# so in console if call class(homes_sub$Status) you get [1] "factor", can then call levels this same way in console. 
+homes_sub$Status <- factor(homes_sub$Status)
 
 # b. Check to ensure it's a factor now
-
+#use class()
 
 # c. Check levels:
-
+#use levels()
 
 # d. Reassign reference level of "Status" to "Regular":
-
+#fct_relevel() fucntion in forcats
 
 # e. Now run the regression again - same equation, but now the reference level is different (Status = Regular): 
 
+homes_sub$Status <- fct_relevel(homes_sub$Status, "Regular")
+# now if check levels, you will see regular is first
 
-
+homes_lm3 <- lm(Price ~ City + SqFt + Status, data = homes_sub)
+summary(homes_lm3)
 ```
 
 Interpret the coefficients and statistical outcomes above. 
@@ -157,6 +180,8 @@ Then we can evaluate model diagnostics using the plot() function:
 ```{r diagnostics}
 
 # a. Model diagnostics:
+plot(homes_lm3)
+#allison typically looks at only the first two. you might be tempted to say spread of residuals incrases by higher price but that is driven by only few points, do not let that change your assumption about heterostasicity, so spread is relatively even. # off of qq if you were an investor you would by the 188, if you were a wealthy person bad purchase you would get the large. 
 
 ```
 
@@ -167,6 +192,10 @@ The AIC is a quantitative metric for model "optimization" that balances complexi
 ```{r AIC}
 
 # a. AIC values for each model
+full_aic <- AIC(homes_lm) 
+#remember this value is useless to report, bc it is just a comparative number for you. it is valuable when comparing multiple models though. 
+final_aic <- AIC(homes_lm3)
+#if i ignored everything i would pick the first one, which is why it is dangerous. it should only be used with total comprehensive view of what is going on. Does this give you any justification to picking this model over the others? no. 
 
 # Answer: which would you pick? 
 
@@ -175,13 +204,13 @@ The AIC is a quantitative metric for model "optimization" that balances complexi
 ###7. Regression tables with *stargazer*
 
 ```{r stargazer, results = 'asis'}
-
+# stargazer created to see in ?stargazer. stargazer does not play nicely with knitting to word but there is a trick around it, opening up html file in word
 # a. Prepare a nice regression table:
 
-
+stargazer(homes_lm, homes_lm3, type = "html")
 
 # Note: If you want to work with this in Word, save to html, open, copy and paste into Word. 
-
+# note it also shows statistical significance by asterisks, organized side by side, if preparing for pub in final report, want to change aesthetics, can do in stargazer but hard. So if you want to finalize formatting that is not changing actual data, find that html doc, then open with word, then edit the way you would normally in word. 
 ```
 
 ###8. Making predictions
@@ -230,9 +259,13 @@ Make predictions for the new data using predict():
 
 # a. Make predictions using the new data frame:
 
+price_predict <- predict(homes_lm3, newdata = df_new, se.fit = TRUE, interval = "confidence")
+# if do class of price predict it is numeric. 
+
 # b. Bind predictions to the data to make it actually useful:
-
-
+#bind this with data that was input to make prediction for
+predict_df <- data.frame(df_new, price_predict)
+# would never show an audience this, so visualize
 
 ```
 
@@ -241,8 +274,12 @@ Then visualize it!
 ```{r graph, echo = FALSE}
 
 # Create a line graph with square footage on the x-axis, predicted price on y-axis, with color dependent on City and facet_wrapped by sale status (follow along):
-
-
+predict_graph <- ggplot(predict_df, aes(x = SqFt, y = fit.fit)) +
+  geom_line(aes(color = City))+
+  geom_point(data = homes_sub, aes(x = SqFt, y = Price), alpha = 0.5)+
+  facet_wrap(~Status)
+predict_graph
+#so this matches what we saw mathmatically. we found in our model that highest mean values coefficients was for slo and lowest was sm-orcutt, regardless of sale type. we also see increase in price with square footage. etc etc. all aligns with coefficients. you can always add data from existing data frames to a ggplot. see addition of ggpoint above. 
 ```
 
 END LAB
